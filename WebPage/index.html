@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JavaScript Trajectory Simulator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+        }
+        .input-group {
+            margin-bottom: 10px;
+        }
+        label {
+            display: inline-block;
+            width: 150px;
+        }
+        input {
+            width: 100px;
+        }
+        button {
+            margin-top: 10px;
+            padding: 5px 10px;
+        }
+        #plotArea {
+            width: 600px;
+            height: 400px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>JavaScript Trajectory Simulator</h1>
+    <div class="input-group">
+        <label for="x0">Initial X coordinate:</label>
+        <input type="number" id="x0" step="0.1" value="0">
+    </div>
+    <div class="input-group">
+        <label for="y0">Initial Y coordinate:</label>
+        <input type="number" id="y0" step="0.1" value="0">
+    </div>
+    <div class="input-group">
+        <label for="z0">Initial Z coordinate:</label>
+        <input type="number" id="z0" step="0.1" value="0">
+    </div>
+    <div class="input-group">
+        <label for="xf">Target X coordinate:</label>
+        <input type="number" id="xf" step="0.1" value="1">
+    </div>
+    <div class="input-group">
+        <label for="yf">Target Y coordinate:</label>
+        <input type="number" id="yf" step="0.1" value="1">
+    </div>
+    <div class="input-group">
+        <label for="zf">Target Z coordinate:</label>
+        <input type="number" id="zf" step="0.1" value="1">
+    </div>
+    <button onclick="simulateTrajectory()">Simulate Trajectory</button>
+    <div id="plotArea"></div>
+
+    <script>
+        function FindTheta(x, y, z) {
+            z = z - 1;
+            const theta1 = Math.atan2(y, x);
+            const c3 = (x*x + y*y + z*z - 2) / 2;
+            const s3 = Math.sqrt(1 - c3*c3);
+            const theta3 = Math.atan2(s3, c3);
+            const den = Math.sqrt((1+c3)*(1+c3) + s3*s3 - z*z);
+            const theta2 = Math.atan2(-z, den) - Math.atan2(s3, 1+c3);
+            return [theta1, theta2, theta3, 0];
+        }
+
+        function Linkcord(theta, d) {
+            const dh = [
+                [0, 0, d[0], theta[0]],
+                [0, -Math.PI/2, d[1], theta[1]],
+                [1, 0, d[2], theta[2]],
+                [1, 0, 0, theta[3]]
+            ];
+
+            const c = dh.map(row => Math.cos(row[3]));
+            const s = dh.map(row => Math.sin(row[3]));
+            const ca = dh.map(row => Math.cos(row[1]));
+            const sa = dh.map(row => Math.sin(row[1]));
+
+            const t = dh.map((row, i) => [
+                [c[i], -s[i], 0, row[0]],
+                [s[i]*ca[i], c[i]*ca[i], -sa[i], -row[2]*sa[i]],
+                [s[i]*sa[i], c[i]*sa[i], ca[i], row[2]*ca[i]],
+                [0, 0, 0, 1]
+            ]);
+
+            let tf = t[0];
+            for (let n = 1; n < 4; n++) {
+                tf = math.multiply(tf, t[n]);
+            }
+
+            return [
+                [tf[0][3], tf[1][3], tf[2][3]],
+                [tf[0][3], tf[1][3], tf[2][3]],
+                [tf[0][3], tf[1][3], tf[2][3]],
+                [tf[0][3], tf[1][3], tf[2][3]]
+            ];
+        }
+
+        function simulateTrajectory() {
+            const x0 = parseFloat(document.getElementById('x0').value);
+            const y0 = parseFloat(document.getElementById('y0').value);
+            const z0 = parseFloat(document.getElementById('z0').value);
+            const xf = parseFloat(document.getElementById('xf').value);
+            const yf = parseFloat(document.getElementById('yf').value);
+            const zf = parseFloat(document.getElementById('zf').value);
+
+            const d = [1, 0, 0];
+            const theta0 = FindTheta(x0, y0, z0);
+            const thetaf = FindTheta(xf, yf, zf);
+
+            const ts = Array.from({length: 10}, (_, i) => i);
+            const theta = ts.map(t => {
+                return theta0.map((_, i) => 
+                    theta0[i] + (3/100)*(t*t)*(thetaf[i]-theta0[i]) - (2/1000)*(t*t*t)*(thetaf[i]-theta0[i])
+                );
+            });
+
+            const coordinates = theta.map(t => Linkcord(t, d));
+
+            const x = coordinates.map(coord => coord.map(point => point[0]));
+            const y = coordinates.map(coord => coord.map(point => point[1]));
+            const z = coordinates.map(coord => coord.map(point => point[2]));
+
+            const trace1 = {
+                x: x.flat(),
+                y: y.flat(),
+                z: z.flat(),
+                mode: 'lines+markers',
+                type: 'scatter3d',
+                line: {color: 'blue', width: 2},
+                marker: {size: 3, color: 'red'}
+            };
+
+            const layout = {
+                title: 'Trajectory Simulation',
+                scene: {
+                    xaxis: {title: 'X'},
+                    yaxis: {title: 'Y'},
+                    zaxis: {title: 'Z'},
+                    aspectmode: 'cube'
+                },
+                width: 600,
+                height: 400,
+                margin: {l: 0, r: 0, b: 0, t: 40}
+            };
+
+            Plotly.newPlot('plotArea', [trace1], layout);
+        }
+    </script>
+</body>
+</html>
